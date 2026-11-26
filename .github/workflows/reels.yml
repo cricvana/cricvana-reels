@@ -1,0 +1,33 @@
+name: Cricvana Reels
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 06:00 IST roz
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: reels
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+      - run: pip install -q requests
+      - name: Make reels (latest + throwback)
+        run: |
+          python make_reels.py "tags=men,season:2026" 2 2 || true
+          python make_reels.py "tags=men,season:2025" 1 1 || true
+          Y=$(shuf -i 2007-2024 -n1); echo "throwback $Y"
+          python make_reels.py "tags=men,season:$Y" 1 2 || true
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls out/*.mp4 >/dev/null 2>&1 || { echo "no new reels"; exit 0; }
+          T="reels-$(date -u +%Y%m%d-%H%M)"
+          gh release create "$T" out/*.mp4 out/manifest.jsonl --title "$T" --notes "Cricvana reels batch"
+      - name: Save state
+        run: |
+          git config user.name cricvana-bot && git config user.email cricvana@proton.me
+          git add state.json && git commit -m "state $(date -u +%F)" && git push || echo "nothing to commit"
